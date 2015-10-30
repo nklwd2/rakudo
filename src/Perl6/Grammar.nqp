@@ -349,7 +349,35 @@ role STD {
                     }
                 }
                 else {
-                    $var.CURSOR.add_mystery($name, $var.to, 'var');
+                    my $categorical := $varast.name ~~ /^'&'((\w+) [ ':<'\s*(\S+?)\s*'>' | ':«'\s*(\S+?)\s*'»' ])$/;
+                    if $categorical {    # Does it look like a metaop?
+                        my $cat := ~$categorical[0][0];
+                        my $op := ~$categorical[0][1];
+                        my $lang := self.'!cursor_init'($op, :p(0));
+                        my $meth := $cat eq 'infix' || $cat eq 'prefix' || $cat eq 'postfix' ?? $cat ~ 'ish' !! $cat;
+                        $meth := 'term:sym<reduce>' if $cat eq 'prefix' && $op ~~ /^ \[ .* \] $ /;
+                        # nqp::printfh(nqp::getstderr(), "$meth $op\n");
+                        my $cursor := $lang."$meth"();
+                        my $match := $cursor.MATCH;
+                        if $cursor.pos == nqp::chars($op) && (
+                            $match<infix_prefix_meta_operator> ||
+                            $match<infix_circumfix_meta_operator> ||
+                            $match<infix_postfix_meta_operator> ||
+                            $match<prefix_postfix_meta_operator> ||
+                            $match<postfix_prefix_meta_operator> ||
+                            $match<op>)
+                        {
+                            my $META := $match.ast[0];
+                            my $fun := $*W.compile_time_evaluate($var,$META);
+                            $*W.install_lexical_symbol($*W.cur_lexpad(),$name,$fun);
+                        }
+                        else {
+                            $var.CURSOR.add_mystery($name, $var.to, 'var');
+                        }
+                    }
+                    else {
+                        $var.CURSOR.add_mystery($name, $var.to, 'var');
+                    }
                 }
             }
             else {
@@ -2413,7 +2441,7 @@ grammar Perl6::Grammar is HLL::Grammar does STD {
           <DECL=multi_declarator>
         | <DECL=multi_declarator>
         ]
-        || <.ws>[<typename><.ws>]* <ident> <?before <.ws> [':'?':'?'=' | ';' | '}' ]> {}
+        || <.ws>[<typename><.ws>]* <ident> <?before <.ws> [':'?':'?'=' | <.terminator> | $ ]> {}
             <.malformed("$*SCOPE (did you mean to declare a sigilless \\{~$<ident>} or \${~$<ident>}?)")>
         || <.ws><typo_typename> <!>
         || <.malformed($*SCOPE)>

@@ -608,7 +608,8 @@ my class List does Iterable does Positional { # declared in BOOTSTRAP
     }
 
     method Capture() {
-        $!todo.reify-all() if $!todo.DEFINITE;
+        fail X::Cannot::Lazy.new(:action('create a Capture from'))
+            if self.is-lazy;
         my $cap := nqp::create(Capture);
         nqp::bindattr($cap, Capture, '$!list', $!reified);
 
@@ -948,7 +949,7 @@ multi sub infix:<xx>(Mu \x, Int() $n, :$thunked!) {
     my int $todo = $n;
     my Mu $pulled;
     my Mu $list := nqp::list();
-    while $todo {
+    while $todo > 0 {
         $pulled := x.();
         if nqp::istype($pulled,Slip) {
             nqp::push($list, $_) for $pulled;

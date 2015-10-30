@@ -71,14 +71,16 @@ my role Blob[::T = uint8] does Positional[T] does Stringy is repr('VMArray') is 
     }
 
     method list(Blob:D:) {
-        my @l;
+        my \retval := List.CREATE;
+        my \reified := IterationBuffer.CREATE;
+        nqp::bindattr(retval, List, '$!reified', reified);
         my int $n = nqp::elems(self);
         my int $i = 0;
         while $i < $n {
-            @l[$i] = nqp::atpos_i(self, $i);
+            reified.push(nqp::atpos_i(self, $i));
             $i = $i + 1;
         }
-        @l;
+        retval;
     }
 
     multi method gist(Blob:D:) {
@@ -391,20 +393,10 @@ multi sub infix:<~>(Blob:D $a, Blob:D $b) {
     my $bdc := nqp::decont($b);
     my int $alen = nqp::elems($adc);
     my int $blen = nqp::elems($bdc);
-    nqp::setelems($res, $alen + $blen);
-    my int $s = 0;
-    my int $d = 0;
-    while $s < $alen {
-        nqp::bindpos_i($res, $d, nqp::atpos_i($adc, $s));
-        $s = $s + 1;
-        $d = $d + 1;
-    }
-    $s = 0;
-    while $s < $blen {
-        nqp::bindpos_i($res, $d, nqp::atpos_i($bdc, $s));
-        $s = $s + 1;
-        $d = $d + 1;
-    }
+
+    nqp::splice($res, $a, 0, $alen);
+    nqp::splice($res, $b, $alen, $blen);
+
     $res
 }
 

@@ -4192,8 +4192,13 @@ Compilation unit '$file' contained the following violations:
         # Stash any traits.
         %*PARAM_INFO<traits> := $<trait>;
 
-        if (%*PARAM_INFO<pos_slurpy> || %*PARAM_INFO<pos_lol> || %*PARAM_INFO<pos_onearg>) && $<type_constraint> {
-            $/.CURSOR.sorry("Slurpy positionals with type constraints are not supported.");
+        if $<type_constraint> {
+            if %*PARAM_INFO<pos_slurpy> || %*PARAM_INFO<pos_lol> || %*PARAM_INFO<pos_onearg> {
+                $/.CURSOR.typed_sorry('X::Parameter::TypedSlurpy', kind => 'positional');
+            }
+            elsif %*PARAM_INFO<named_slurpy> {
+                $/.CURSOR.typed_sorry('X::Parameter::TypedSlurpy', kind => 'named');
+            }
         }
 
         # Result is the parameter info hash.
@@ -5114,10 +5119,18 @@ Compilation unit '$file' contained the following violations:
 
             # If needed, try to form a coercion type.
             if $<accept> || $<accept_any> {
-                unless nqp::istype($past, QAST::WVal) {
+                my $value;
+                if nqp::istype($past, QAST::WVal) {
+                    $value := $past.value;
+                }
+                elsif $past.has_compile_time_value {
+                    $value := $past.compile_time_value;
+                }
+                else {
                     $/.CURSOR.panic("Target type too complex to form a coercion type");
                 }
-                my $type := $*W.create_coercion_type($/, $past.value,
+
+                my $type := $*W.create_coercion_type($/, $value,
                     $<accept> ?? $<accept>.ast !! $*W.find_symbol(['Any']));
                 $past := QAST::WVal.new( :value($type) );
             }
@@ -7366,6 +7379,9 @@ Compilation unit '$file' contained the following violations:
             # Handle coercion.
             my $coerce_to := nqp::getattr($param_obj, $Param, '$!coerce_type');
             unless nqp::isnull($coerce_to) {
+                if $coerce_to.HOW.archetypes.generic {
+                    return 0;
+                }
                 $var.push(QAST::Op.new(
                     :op('unless'),
                     QAST::Op.new(
