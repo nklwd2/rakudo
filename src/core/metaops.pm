@@ -10,7 +10,7 @@ sub METAOP_TEST_ASSIGN:<andthen>(\lhs, $rhs) is raw { lhs andthen (lhs = $rhs())
 sub METAOP_TEST_ASSIGN:<orelse>(\lhs, $rhs) is raw { lhs orelse (lhs = $rhs()) }
 
 sub METAOP_NEGATE(\op) {
-    -> Mu \a, Mu \b { !op.(a ,b) }
+    -> |c { c.elems > 1 ?? !op.(|c) !! True }
 }
 
 sub METAOP_REVERSE(\op) {
@@ -394,26 +394,34 @@ sub METAOP_HYPER(\op, *%opt) {
 }
 
 proto sub METAOP_HYPER_POSTFIX(|) {*}
-multi sub METAOP_HYPER_POSTFIX(\obj, \op) {
-    op.?nodal      # rarely true for prefixes
-        ?? nodemap(op, obj)
-        !! deepmap(op, obj);
+multi sub METAOP_HYPER_POSTFIX(\op) {
+    op.?nodal
+        ?? (-> \obj { nodemap(op, obj) })
+        !! (-> \obj { deepmap(op, obj) })
 }
-multi sub METAOP_HYPER_POSTFIX(\obj, @args, \op) {
+
+# no indirection for subscripts and such
+proto sub METAOP_HYPER_POSTFIX_ARGS(|) {*}
+multi sub METAOP_HYPER_POSTFIX_ARGS(\obj,\op) {
+    op.?nodal
+        ?? nodemap(op, obj)
+        !! deepmap(op, obj)
+}
+multi sub METAOP_HYPER_POSTFIX_ARGS(\obj, @args, \op) {
     op.?nodal
         ?? nodemap( -> \o { op.(o,@args) }, obj )
         !! deepmap( -> \o { op.(o,@args) }, obj );
 }
-multi sub METAOP_HYPER_POSTFIX(\obj, \args, \op) {
+multi sub METAOP_HYPER_POSTFIX_ARGS(\obj, \args, \op) {
     op.?nodal
         ?? nodemap( -> \o { op.(o,|args) }, obj )
         !! deepmap( -> \o { op.(o,|args) }, obj );
 }
 
-sub METAOP_HYPER_PREFIX(\op, \obj) {
+sub METAOP_HYPER_PREFIX(\op) {
     op.?nodal      # rarely true for prefixes
-        ?? nodemap(op, obj)
-        !! deepmap(op, obj);
+        ?? (-> \obj { nodemap(op, obj) })
+        !! (-> \obj { deepmap(op, obj) })
 }
 
 sub METAOP_HYPER_CALL(\list, |args) { deepmap(-> $c { $c(|args) }, list) }

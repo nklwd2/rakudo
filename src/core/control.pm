@@ -196,7 +196,7 @@ multi sub warn(*@msg) {
     0;
 }
 
-proto sub EVAL(Cool $code, Str() :$lang = 'perl6', PseudoStash :$context) {
+proto sub EVAL(Cool $code, Str() :$lang = 'perl6', PseudoStash :$context, *%n) {
     # First look in compiler registry.
     my $compiler := nqp::getcomp($lang);
     if nqp::isnull($compiler) {
@@ -252,14 +252,6 @@ constant NaN = nqp::p6box_n(nqp::nan());
 
 sub EXHAUST(|) {
     X::ControlFlow::Return.new.throw();
-}
-
-# True if given array does not just contain defined objects of given type
-sub NOT_ALL_DEFINED_TYPE(\values,\type) {
-    for values {
-        return True unless nqp::defined($_) && nqp::istype($_,type);
-    }
-    False;
 }
 
 sub CLONE-HASH-DECONTAINERIZED(\hash) {

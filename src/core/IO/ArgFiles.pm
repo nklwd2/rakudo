@@ -3,7 +3,7 @@ my class IO::ArgFiles is IO::Handle {
     has $.filename;
     has $!io;
     has $.ins;
-    has $!nl = "\n";
+    has $!nl-in = ["\n", "\r\n"];
     has $!has-args;
 
     method eof() {
@@ -23,7 +23,7 @@ my class IO::ArgFiles is IO::Handle {
                 $!filename = '-';
             }
 
-            $!io = open($!filename, :r, :nl($!nl)) ||
+            $!io = open($!filename, :r, :$!nl-in) ||
                 fail "Unable to open file '$!filename'";
         }
 
@@ -83,7 +83,7 @@ my class IO::ArgFiles is IO::Handle {
                     my $io = $!next-io.();
                     return $io if nqp::istype($io, Failure);
                     return IterationEnd unless $io.defined;
-                    $!iter := $io.lines.iterator;
+                    $!iter := $io.lines(:close).iterator;
                     self.pull-one;
                 }
                 else {
@@ -107,15 +107,20 @@ my class IO::ArgFiles is IO::Handle {
     }
 
     method nl is rw {
+        DEPRECATED('nl-in');
+        self.nl-in
+    }
+
+    method nl-in is rw {
         Proxy.new(
           FETCH => {
-              $!nl
+              $!nl-in
           },
-          STORE => -> $, $nl {
+          STORE => -> $, $nl-in {
               if $!io.defined {
-                  nqp::setinputlinesep($!io, nqp::unbox_s($!nl = $nl));
+                  Rakudo::Internals.SET_LINE_ENDING_ON_HANDLE($!io, $nl-in);
               }
-              $!nl = $nl;
+              $!nl-in = $nl-in;
           }
         );
     }

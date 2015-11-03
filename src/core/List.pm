@@ -3,7 +3,6 @@ my class X::TypeCheck { ... }
 my class X::TypeCheck::Splice { ... }
 my class X::Cannot::Lazy { ... }
 my class X::Cannot::Empty { ... }
-my class X::Immutable { ... }
 my role Supply { ... }
 
 my sub combinations(\n, \k) {
@@ -42,16 +41,6 @@ my sub combinations(\n, \k) {
             IterationEnd
         }
     }.new(n,k))
-}
-
-my sub permutations(Int $n) {
-    $n == 1 ?? ( (0,), ) !!
-    gather for ^$n -> $i {
-        my @i = flat 0 ..^ $i, $i ^..^ $n;
-        for permutations($n - 1) {
-            take ($i, |@i[@$_])
-        }
-    }
 }
 
 sub find-reducer-for-op($op) {
@@ -329,7 +318,8 @@ my class List does Iterable does Positional { # declared in BOOTSTRAP
     }
 
     method !AT-POS-SLOWPATH(int $pos) is raw {
-        fail X::OutOfRange.new(:what<Index>, :got($pos), :range<0..Inf>)
+        fail X::OutOfRange.new(
+          :what($*INDEX // 'Index'), :got($pos), :range<0..Inf>)
             if $pos < 0;
         $!todo.DEFINITE && $!todo.reify-at-least($pos + 1) > $pos
             ?? nqp::atpos($!reified, $pos)
@@ -465,10 +455,43 @@ my class List does Iterable does Positional { # declared in BOOTSTRAP
           !! Range.new( 0, self.elems - 1 )
     }
     multi method kv(List:D:) {
-        gather self.values.map: {
-            take (state $)++;
-            take-rw $_;
-        }
+        Seq.new(class :: does Iterator {
+            has Mu $!iter;
+            has Mu $!pulled;
+            has int $!on-key;
+            has int $!key;
+
+            method BUILD(\iter) { $!iter := iter; $!on-key = 1; self }
+            method new(\iter)   { nqp::create(self).BUILD(iter) }
+
+            method pull-one() is raw {
+                if $!on-key {
+                    my $pulled;
+                    if ($pulled := $!iter.pull-one) =:= IterationEnd {
+                        IterationEnd
+                    }
+                    else {
+                        $!pulled := $pulled;
+                        $!on-key  = 0;
+                        $!key++
+                    }
+                }
+                else {
+                    $!on-key = 1;
+                    $!pulled
+                }
+            }
+            method push-all($target) {
+                my $pulled;
+                my int $key;
+                until ($pulled := $!iter.pull-one) =:= IterationEnd {
+                    $target.push(nqp::p6box_i($key));
+                    $target.push($pulled);
+                    $key = $key + 1;
+                }
+                IterationEnd
+            }
+        }.new(self.iterator))
     }
     multi method pairs(List:D:) {
         self.values.map: { (state $)++ => $_ }
@@ -856,16 +879,22 @@ my class List does Iterable does Positional { # declared in BOOTSTRAP
     }
 
     method push(|) is nodal {
-        X::Immutable.new( method => 'push',    typename => 'List' ).throw;
+        X::Immutable.new(:typename<List>,:method<push>).throw
     }
-    method pop(|) is nodal {
-        X::Immutable.new( method => 'pop',     typename => 'List' ).throw;
-    }
-    method shift(|) is nodal {
-        X::Immutable.new( method => 'shift',   typename => 'List' ).throw;
+    method append(|) is nodal {
+        X::Immutable.new(:typename<List>,:method<append>).throw
     }
     method unshift(|) is nodal {
-        X::Immutable.new( method => 'unshift', typename => 'List' ).throw;
+        X::Immutable.new(:typename<List>,:method<unshift>).throw
+    }
+    method prepend(|) is nodal {
+        X::Immutable.new(:typename<List>,:method<prepend>).throw
+    }
+    method shift(|) is nodal {
+        X::Immutable.new(:typename<List>,:method<shift>).throw
+    }
+    method pop(|) is nodal {
+        X::Immutable.new(:typename<List>, :method<pop>).throw
     }
 }
 

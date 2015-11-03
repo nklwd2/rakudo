@@ -67,7 +67,7 @@ register_op_desugar('p6for', -> $qast {
     my $call := QAST::Op.new(
         :op<callmethod>, :name<map>, :node($qast),
         QAST::Var.new( :name($for-list-name), :scope('local') ),
-        block_closure($block),
+        $block,
         $iscont,
     );
     if $label {
@@ -923,12 +923,12 @@ Compilation unit '$file' contained the following violations:
                         QAST::Op.new(
                             :op<p6for>, :node($/),
                             $cond,
-                            $past,
+                            block_closure($past),
                         ),
                         'v', QAST::Op.new(
                             :op<p6for>, :node($/),
                             $cond,
-                            $past,
+                            block_closure($past),
                         ),
                     );
                     $past[0].annotate('context', 'eager');
@@ -1301,12 +1301,12 @@ Compilation unit '$file' contained the following violations:
             QAST::Op.new(
                 :op<p6for>, :node($/),
                 $xblock[0],
-                $xblock[1],
+                block_closure($xblock[1]),
             ),
             'v', QAST::Op.new(
                 :op<p6for>, :node($/),
                 $xblock[0],
-                $xblock[1],
+                block_closure($xblock[1]),
             ),
         );
         if $*LABEL {
@@ -6219,11 +6219,13 @@ Compilation unit '$file' contained the following violations:
 
     method prefixish($/) {
         if $<prefix_postfix_meta_operator> {
-            make QAST::Op.new( :node($/),
+            make QAST::Op.new( :node($/), :op<call>,
+                QAST::Op.new( :node($/),
                      :name<&METAOP_HYPER_PREFIX>,
                      :op<call>,
                      QAST::Var.new( :name('&prefix:' ~ $*W.canonicalize_opname($<OPER>.Str)),
-                                    :scope<lexical> ));
+                                    :scope<lexical> ))
+            );
         }
     }
 
@@ -6371,7 +6373,7 @@ Compilation unit '$file' contained the following violations:
                                     ?? QAST::Var.new( :name($past.name), :scope<lexical>)
                                     !! $past[0];
                     $past.push($basepast);
-                    $past.name('&METAOP_HYPER_POSTFIX');
+                    $past.name('&METAOP_HYPER_POSTFIX_ARGS');
                 }
             }
             make $past;

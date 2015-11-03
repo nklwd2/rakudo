@@ -9,33 +9,6 @@ my class X::Numeric::Confused { ... }
 
 my constant $?TABSTOP = 8;
 
-sub NORMALIZE_ENCODING(Str:D $s) {
-    state %map = (
-        # fast mapping for identicals
-        'utf8'              => 'utf8',
-        'utf16'             => 'utf16',
-        'utf32'             => 'utf32',
-        'ascii'             => 'ascii',
-        'iso-8859-1'        => 'iso-8859-1',
-        'windows-1252'      => 'windows-1252',
-        # with dash
-        'utf-8'             => 'utf8',
-        'utf-16'            => 'utf16',
-        'utf-32'            => 'utf32',
-        # according to http://de.wikipedia.org/wiki/ISO-8859-1
-        'iso_8859-1:1987'   => 'iso-8859-1',
-        'iso_8859-1'        => 'iso-8859-1',
-        'iso-ir-100'        => 'iso-8859-1',
-        'latin1'            => 'iso-8859-1',
-        'latin-1'           => 'iso-8859-1',
-        'csisolatin1'       => 'iso-8859-1',
-        'l1'                => 'iso-8859-1',
-        'ibm819'            => 'iso-8859-1',
-        'cp819'             => 'iso-8859-1',
-    );
-    %map{$s} // %map{lc $s} // lc $s;
-}
-
 my class Str does Stringy { # declared in BOOTSTRAP
     # class Str is Cool {
     #     has str $!value is box_target;
@@ -543,7 +516,7 @@ my class Str does Stringy { # declared in BOOTSTRAP
 
     multi method subst(Str:D: Str \from, Str \to, :$global!, *%adverbs) {
         if $global && !%adverbs {
-            TRANSPOSE(self,from,to);
+            Rakudo::Internals.TRANSPOSE(self,from,to);
         }
         else {
             $/ := nqp::getlexdyn('$/');
@@ -648,7 +621,8 @@ my class Str does Stringy { # declared in BOOTSTRAP
     }
 
     # constant ???
-    my str $CRLF = nqp::unbox_s("\r\n");
+    my str $CRLF = "\r\n";
+    my int $CRLF-EXTRA = nqp::chars($CRLF) - 1;
 
     multi method lines(Str:D: :$count!) {
         # we should probably deprecate this feature
@@ -675,7 +649,8 @@ my class Str does Stringy { # declared in BOOTSTRAP
                     my str $found = ($length = $nextpos - $!pos)
                       ?? nqp::substr($!str, $!pos, $length )
                       !! '';
-                    $!pos = $nextpos + 1 + nqp::eqat($!str, $CRLF, $nextpos);
+                    $!pos = $nextpos + 1 +
+                        (nqp::eqat($!str, $CRLF, $nextpos) ?? $CRLF-EXTRA !! 0);
 
                     return nqp::p6box_s($found);
                 }
@@ -695,7 +670,8 @@ my class Str does Stringy { # declared in BOOTSTRAP
                       ?? nqp::substr($!str, $!pos, $length)
                       !! ''
                     ));
-                    $!pos = $nextpos + 1 + nqp::eqat($!str, $CRLF, $nextpos);
+                    $!pos = $nextpos + 1 +
+                        (nqp::eqat($!str, $CRLF, $nextpos) ?? $CRLF-EXTRA !! 0);
 
                     $found = $found + 1;
                     return nqp::p6box_i($found) if $found == $n;
@@ -715,7 +691,8 @@ my class Str does Stringy { # declared in BOOTSTRAP
                       ?? nqp::substr($!str, $!pos, $length)
                       !! ''
                     ));
-                    $!pos = $nextpos + 1 + nqp::eqat($!str, $CRLF, $nextpos);
+                    $!pos = $nextpos + 1 +
+                        (nqp::eqat($!str, $CRLF, $nextpos) ?? $CRLF-EXTRA !! 0);
                 }
                 IterationEnd
             }
@@ -729,7 +706,8 @@ my class Str does Stringy { # declared in BOOTSTRAP
                       nqp::const::CCLASS_NEWLINE, $!str, $!pos, $left);
 
                     $found = $found + 1;
-                    $!pos = $nextpos + 1 + nqp::eqat($!str, $CRLF, $nextpos);
+                    $!pos = $nextpos + 1 +
+                        (nqp::eqat($!str, $CRLF, $nextpos) ?? $CRLF-EXTRA !! 0);
                 }
                 nqp::p6box_i($found)
             }
@@ -855,7 +833,7 @@ my class Str does Stringy { # declared in BOOTSTRAP
                 }
                 method !last-part() is raw {
                     my str $string = nqp::substr($!string,$!pos);
-                    $!pos = $!chars;
+                    $!pos  = $!chars + 1;
                     $!todo = 0;
                     nqp::p6box_s($string)
                 }
@@ -874,14 +852,14 @@ my class Str does Stringy { # declared in BOOTSTRAP
                         $!todo = $!todo - 1;
                         my int $found = nqp::index($!string,$!match,$!pos);
                         if $found < 0 {
-                            $!pos < $!chars ?? self!last-part !! IterationEnd
+                            $!pos <= $!chars ?? self!last-part !! IterationEnd
                         }
                         else {
                             $!do-match = $!all;
                             self!next-part($found);
                         }
                     }
-                    elsif $!pos < $!chars {
+                    elsif $!pos <= $!chars {
                         self!last-part
                     }
                     else {
@@ -911,7 +889,7 @@ my class Str does Stringy { # declared in BOOTSTRAP
                               !! $target.push(self!next-part($found));
                         }
                     }
-                    $target.push(self!last-part) if $!pos < $!chars;
+                    $target.push(self!last-part) if $!pos <= $!chars;
                     IterationEnd
                 }
                 method sink-all() { IterationEnd }
@@ -1153,11 +1131,12 @@ my class Str does Stringy { # declared in BOOTSTRAP
         }.new(self));
     }
 
-    my %enc_type = utf8 => utf8, utf16 => utf16, utf32 => utf32;
+    my $enc_type := nqp::hash('utf8',utf8,'utf16',utf16,'utf32',utf32);
     method encode(Str:D $encoding = 'utf8') {
-        my $enc      := NORMALIZE_ENCODING($encoding);
-        my $enc_type := %enc_type.EXISTS-KEY($enc) ?? %enc_type{$enc} !! blob8;
-        nqp::encode(nqp::unbox_s(self), nqp::unbox_s($enc), nqp::decont($enc_type.new))
+        my str $enc = Rakudo::Internals.NORMALIZE_ENCODING($encoding);
+        my $type   :=
+          nqp::existskey($enc_type,$enc) ?? nqp::atkey($enc_type,$enc) !! blob8;
+        nqp::encode(nqp::unbox_s(self), $enc, nqp::decont($type.new))
     }
 
 #?if moar
@@ -1322,8 +1301,9 @@ my class Str does Stringy { # declared in BOOTSTRAP
           || !$to.defined              # or a type object
           || %n;                       # or any named params passed
 
-        return TRANSPOSE-ONE(self, $from, substr($to,0,1))  # 1 char to 1 char
-          if $from.chars == 1 && $to.chars;
+        # from 1 char
+        return Rakudo::Internals.TRANSPOSE(self, $from, substr($to,0,1))
+          if $from.chars == 1;
 
         sub expand(Str:D \x) {
             my str $s     = nqp::unbox_s(x);
@@ -1450,7 +1430,7 @@ my class Str does Stringy { # declared in BOOTSTRAP
             nqp::push_s($ret, nqp::unbox_s($lsm.substituted_text));
         }
         nqp::push_s($ret, nqp::unbox_s($lsm.unsubstituted_text));
-        return nqp::join('', $ret);
+        nqp::p6box_s(nqp::join('', $ret))
     }
     proto method indent($) {*}
     # Zero indent does nothing
@@ -1925,62 +1905,6 @@ sub substr-rw(\what, \start, $want?) is rw {
            },
          )
       !! $r;
-}
-
-sub TRANSPOSE(Str \string, Str \original, Str \final) {
-    my str $str    = nqp::unbox_s(string);
-    my int $chars  = nqp::chars($str);
-    my str $needle = nqp::unbox_s(original);
-    my int $skip   = nqp::chars($needle);
-    my int $from;
-    my int $to;
-    my Mu  $parts := nqp::list_s();
-
-    while $to < $chars {
-        $to = nqp::index($str,$needle,$from);
-        last if $to == -1;
-        nqp::push_s($parts, $to > $from
-              ?? nqp::substr($str,$from,$to - $from)
-              !! ''
-            );
-        $to = $from = $to + $skip;
-    }
-    nqp::push_s( $parts, $from < $chars
-      ?? nqp::substr($str,$from,$chars - $from)
-      !! ''
-    );
-
-    nqp::elems($parts)
-      ?? nqp::box_s(nqp::join(nqp::unbox_s(final),$parts),Str)
-      !! string;
-}
-
-sub TRANSPOSE-ONE(Str \string, Str \original, Str \final) {
-    my str $str     = nqp::unbox_s(string);
-    my int $chars   = nqp::chars($str);
-    my int $ordinal = ord(original);
-    my int $from;
-    my int $to;
-    my $parts := nqp::list_s();
-
-    while $to < $chars {
-        if nqp::ordat($str,$to) == $ordinal {
-            nqp::push_s($parts, $to > $from
-              ?? nqp::substr($str,$from,$to - $from)
-              !! ''
-            );
-            $from = $to + 1;
-        }
-        $to = $to + 1;
-    }
-    nqp::push_s( $parts, $from < $chars
-      ?? nqp::substr($str,$from,$chars - $from)
-      !! ''
-    );
-
-    nqp::elems($parts)
-      ?? nqp::box_s(nqp::join(nqp::unbox_s(final),$parts),Str)
-      !! string;
 }
 
 # These probably belong in a separate unicodey file

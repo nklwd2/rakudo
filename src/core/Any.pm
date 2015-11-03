@@ -251,13 +251,15 @@ my class Any { # declared in BOOTSTRAP
     }
 
     multi method AT-POS(Any:D: int \pos) is raw {
-        fail X::OutOfRange.new(:what<Index>, :got(pos), :range<0..0>)
-          unless nqp::not_i(pos);
+        fail X::OutOfRange.new(
+          :what($*INDEX // 'Index'), :got(pos), :range<0..0>)
+            unless nqp::not_i(pos);
         self;
     }
     multi method AT-POS(Any:D: Int:D \pos) is raw {
-        fail X::OutOfRange.new(:what<Index>, :got(pos), :range<0..0>)
-          if pos != 0;
+        fail X::OutOfRange.new(
+          :what($*INDEX // 'Index'), :got(pos), :range<0..0>)
+            if pos != 0;
         self;
     }
     multi method AT-POS(Any:D: Num:D \pos) is raw {
@@ -398,8 +400,8 @@ my class Any { # declared in BOOTSTRAP
     method MixHash() is nodal { MixHash.new-from-pairs(self.list) }
     method Supply() is nodal { self.list.Supply }
 
-    method nl() { "\n" }
-    method print-nl() { self.print(self.nl) }
+    method nl-out() { "\n" }
+    method print-nl() { self.print(self.nl-out) }
 
     method lazy-if($flag) { self }  # no-op on non-Iterables
 }

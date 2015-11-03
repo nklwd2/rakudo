@@ -1269,8 +1269,8 @@ my class X::Syntax::Perl5Var does X::Syntax {
       '$\'' => '$/.postmatch',
       '$,'  => '$*OUT.output_field_separator()',
       '$.'  => "the filehandle's .ins method",
-      '$/'  => "the filehandle's .nl attribute",
-      '$\\' => "the filehandle's .nl attribute",
+      '$/'  => "the filehandle's .nl-in attribute",
+      '$\\' => "the filehandle's .nl-out attribute",
       '$|'  => ':autoflush on open',
       '$?'  => '$! for handling child errors also',
       '$@'  => '$!',
@@ -1340,6 +1340,22 @@ my class X::Syntax::Number::RadixOutOfRange does X::Syntax {
 
 my class X::Syntax::Number::IllegalDecimal does X::Syntax {
     method message() { "Decimal point must be followed by digit" }
+}
+
+my class X::Syntax::Number::LiteralType does X::Syntax {
+    has $.varname;
+    has $.vartype;
+    has $.value;
+    has $.valuetype;
+    has $.suggestiontype;
+
+    method message() {
+        my $vartype := $!vartype.WHAT.^name;
+        my $value := $!value.perl;
+        my $val = "Cannot assign a literal of type {$.valuetype} ($value) to a variable of type $vartype. You can declare the variable to be of type $.suggestiontype, or try to coerce the value with { $value ~ '.' ~ $vartype } or $vartype\($value\)";
+        try $val ~= ", or just write the value as " ~ $!value."$vartype"().perl;
+        $val;
+    }
 }
 
 my class X::Syntax::NonAssociative does X::Syntax {
@@ -2079,7 +2095,7 @@ my class X::PhaserExceptions is Exception {
     method message() {
         "Multiple exceptions were thrown by LEAVE/POST phasers"
     }
-    method gist(X::PhaserExceptions:D:) {
+    multi method gist(X::PhaserExceptions:D:) {
         join "\n", flat
             "Multiple exceptions were thrown by LEAVE/POST phasers\n",
             @!exceptions>>.gist>>.indent(4)

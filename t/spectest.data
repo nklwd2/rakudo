@@ -727,6 +727,7 @@ S16-filehandles/unlink.t
 S16-io/bare-say.t
 S16-io/basic-open.t
 S16-io/bom.t
+S16-io/comb.t
 S16-io/cwd.t
 S16-io/getc.t
 S16-io/lines.t
@@ -734,6 +735,8 @@ S16-io/note.t
 S16-io/print.t
 S16-io/say-and-ref.t
 S16-io/say.t
+S16-io/split.t
+S16-io/supply.t
 S16-io/tmpdir.t
 S16-io/words.t
 S16-unfiled/rebindstdhandles.t
@@ -924,6 +927,7 @@ S32-list/grep-k.t
 S32-list/grep-kv.t
 S32-list/grep-p.t
 S32-list/grep-v.t
+S32-list/head.t
 S32-list/join.t
 S32-list/map_function_return_values.t
 S32-list/map.t
@@ -932,11 +936,13 @@ S32-list/permutations.t
 S32-list/pick.t
 S32-list/produce.t
 S32-list/reduce.t
+S32-list/repeated.t
 S32-list/reverse.t
 S32-list/roll.t
 S32-list/rotor.t
 S32-list/seq.t
 S32-list/sort.t
+S32-list/tail.t
 S32-list/unique.t
 S32-list/squish.t
 S32-num/abs.t

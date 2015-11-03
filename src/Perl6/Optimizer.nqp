@@ -1044,6 +1044,19 @@ class Perl6::Optimizer {
 
         # If it's a for 1..1000000 { } we can simplify it to a while loop. We
         # check this here, before the tree is transformed by call inline opts.
+        if $optype eq 'p6for' && $op.ann('context') eq 'sink' && @($op) == 2 {
+            my $theop := $op[0];
+            if nqp::istype($theop, QAST::Stmts) { $theop := $theop[0] }
+
+            if nqp::istype($theop, QAST::Op) && nqp::existskey(%range_bounds, $theop.name) && $!symbols.is_from_core($theop.name) {
+                self.optimize_for_range($op, $op[1], $theop);
+                self.visit_op_children($op);
+                return $op;
+            }
+        }
+
+        # It could also be that the user explicitly spelled out the for loop
+        # with a method call to "map".
         if $optype eq 'callmethod' && $op.name eq 'sink' &&
               nqp::istype($op[0], QAST::Op) && $op[0].op eq 'callmethod' && $op[0].name eq 'map' && @($op[0]) == 2 &&
                 (nqp::istype((my $c1 := $op[0][0]), QAST::Op) &&
@@ -1052,11 +1065,104 @@ class Perl6::Optimizer {
                         nqp::istype(($c1 := $op[0][0][0]), QAST::Op) &&
                         nqp::existskey(%range_bounds, $c1.name)) &&
               $!symbols.is_from_core($c1.name) {
-            self.optimize_for_range($op, $c1);
+            self.optimize_for_range($op, $op[0][1], $c1);
             self.visit_op_children($op);
             return $op;
         }
-        
+
+        # Let's see if we can catch a type mismatch in assignment at compile-time.
+        # Especially with Num, Rat, and Int there's often surprises at run-time.
+        if $optype eq 'assign' && nqp::istype($op[0], QAST::Var) && $op[0].scope eq 'lexical' {
+            if nqp::istype($op[1], QAST::Want) {
+                # grab the var's symbol from our blocks
+                my $varsym := $!symbols.find_lexical_symbol($op[0].name);
+                my $type := $varsym<type>;
+
+                my $want_type := $op[1][1];
+                my $varname := $op[0].name;
+
+                if $want_type eq 'Ii' {
+                    if $type =:= $!symbols.find_in_setting("Num") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[1],
+                                :$varname, :vartype($type), :value($op[1][2].value), :suggestiontype<Real>,
+                                :valuetype<Int>
+                            );
+                    } elsif $type =:= $!symbols.find_in_setting("Rat") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[1],
+                                :$varname, :vartype($type), :value($op[1][2].value), :suggestiontype<Real>,
+                                :valuetype<Int>
+                            );
+                    } elsif $type =:= $!symbols.find_in_setting("Complex") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[1],
+                                :$varname, :vartype($type), :value($op[1][2].value), :suggestiontype<Numeric>,
+                                :valuetype<Int>
+                            );
+                    }
+                } elsif $want_type eq 'Nn' {
+                    if $type =:= $!symbols.find_in_setting("Int") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[1],
+                                :$varname, :vartype($type), :value($op[1][2].value), :suggestiontype<Real>,
+                                :valuetype<Num>
+                            );
+                    } elsif $type =:= $!symbols.find_in_setting("Rat") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[1],
+                                :$varname, :vartype($type), :value($op[1][2].value), :suggestiontype<Real>,
+                                :valuetype<Num>
+                            );
+                    } elsif $type =:= $!symbols.find_in_setting("Complex") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[1],
+                                :$varname, :vartype($type), :value($op[1][2].value), :suggestiontype<Numeric>,
+                                :valuetype<Num>
+                            );
+                    }
+                }
+            }
+            elsif nqp::istype($op[1], QAST::WVal) {
+                my $varsym := $!symbols.find_lexical_symbol($op[0].name);
+                my $type := $varsym<type>;
+
+                my $value := $op[1].value;
+                my $val_type := $value.HOW.name($value);
+                my $varname := $op[0].name;
+                if $val_type eq 'Rat' || $val_type eq 'RatStr' {
+                    if $type =:= $!symbols.find_in_setting("Int") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[0],
+                                :$varname, :vartype($type), :value(+$value), :suggestiontype<Real>,
+                                :valuetype<Rat>
+                            );
+                    } elsif $type =:= $!symbols.find_in_setting("Num") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[0],
+                                :$varname, :vartype($type), :value(+$value), :suggestiontype<Real>,
+                                :valuetype<Rat>
+                            );
+                    } elsif $type =:= $!symbols.find_in_setting("Complex") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[0],
+                                :$varname, :vartype($type), :value(+$value), :suggestiontype<Numeric>,
+                                :valuetype<Rat>
+                            );
+                    }
+                }
+                elsif $val_type eq 'Complex' || $val_type eq 'ComplexStr' {
+                    if $type =:= $!symbols.find_in_setting("Int") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[0],
+                                :$varname, :vartype($type), :value($value.Numeric), :suggestiontype<Numeric>,
+                                :valuetype<Complex>
+                            );
+                    } elsif $type =:= $!symbols.find_in_setting("Num") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[0],
+                                :$varname, :vartype($type), :value($value.Numeric), :suggestiontype<Numeric>,
+                                :valuetype<Complex>
+                            );
+                    } elsif $type =:= $!symbols.find_in_setting("Rat") {
+                        $!problems.add_exception(['X', 'Syntax', 'Number', 'LiteralType'], $op[0],
+                                :$varname, :vartype($type), :value($value.Numeric), :suggestiontype<Numeric>,
+                                :valuetype<Complex>
+                            );
+                    }
+                }
+            }
+        }
+
         # A chain with exactly two children can become the op itself.
         if $optype eq 'chain' {
             $!chain_depth := $!chain_depth + 1;
@@ -1490,8 +1596,7 @@ class Perl6::Optimizer {
         }
     }
 
-    method optimize_for_range($op, $c2) {
-        my $callee  := $op[0][1];
+    method optimize_for_range($op, $callee, $c2) {
         my $code    := $callee.ann('code_object');
         my $count   := $code.count;
         my $block   := $!symbols.Block;
@@ -1534,8 +1639,11 @@ class Perl6::Optimizer {
                             :op('add_i'),
                             QAST::Var.new( :name($it_var), :scope('local'), :returns(int) ),
                             QAST::IVal.new( :value(1) )
-                        ))),
-                        QAST::WVal.new( :value($!symbols.Nil) )));
+                        )
+                    )
+                ),
+                QAST::WVal.new( :value($!symbols.Nil) )
+            ));
         }
     }
 
@@ -1726,7 +1834,7 @@ class Perl6::Optimizer {
         %opts<protoguilt> := $protoguilt // nqp::p6bool(0);
         %opts<arguments> := @arg_names;
         %opts<objname> := $obj.name;
-        %opts<signature> := $obj.is_dispatcher && !$protoguilt ??
+        %opts<signature> := nqp::can($obj, 'is_dispatcher') && $obj.is_dispatcher && !$protoguilt ??
                 multi_sig_list($obj) !!
                 [try $obj.signature.gist];
 
