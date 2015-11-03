@@ -7,7 +7,7 @@ my class IO::Handle does IO {
     has $!PIO;
     has $.chomp is rw = Bool::True;
     has int $.ins;
-    has $.nl-in = ["\n", "\r\n"];
+    has $.nl-in = ["\x0A", "\x0D\x0A"];
     has Str:D $.nl-out is rw = "\n";
 
     method open(IO::Handle:D:
@@ -21,7 +21,7 @@ my class IO::Handle does IO {
       :$bin,
       :$chomp = True,
       :$enc   = 'utf8',
-      :$nl-in is copy = ["\n", "\r\n"],
+      :$nl-in is copy = ["\x0A", "\x0D\x0A"],
       Str:D :$nl-out is copy = "\n",
       :$nl
     ) {

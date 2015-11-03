@@ -195,8 +195,8 @@ my class Str does Stringy { # declared in BOOTSTRAP
 
     my %esc = (
         '$' => '\$',  '@' => '\@',  '%' => '\%',  '&' => '\&',  '{' => '\{',
-        "\b" => '\b', "\n" => '\n', "\r" => '\r', "\t" => '\t', '"' => '\"',
-        '\\' => '\\\\' );
+        "\b" => '\b', "\x0A" => '\x0A', "\r" => '\r', "\t" => '\t', '"' => '\"',
+        '\\' => '\\\\', "\r\x0A" => '\r\x0A' );
 
     multi method gist(Str:D:) { self }
     multi method perl(Str:D:) {
@@ -621,7 +621,7 @@ my class Str does Stringy { # declared in BOOTSTRAP
     }
 
     # constant ???
-    my str $CRLF = "\r\n";
+    my str $CRLF = "\r\x0A";
     my int $CRLF-EXTRA = nqp::chars($CRLF) - 1;
 
     multi method lines(Str:D: :$count!) {
